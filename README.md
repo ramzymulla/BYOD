@@ -2,6 +2,26 @@
 
 This repository contains a modified version of the Keypoint SLDS model from the `jax_moseq` package. The standard Switching Linear Dynamical System (SLDS) has been extended into a **Recurrent Switching Linear Dynamical System (rSLDS)**, based on the framework introduced by *Linderman et al., 2016*.
 
+
+## Installation
+
+To install this package with the modified model, first install keypoint-moseq in a new conda environment:
+```
+conda create --name kpms python=3.10
+conda activate kpms
+pip install keypoint-moseq
+```
+
+Next, uninstall the jax-moseq package from the environment, then install the local version from this repository (the following lines should be run from the top of the BYOD repository)
+
+```
+pip uninstall jax-moseq
+cd jax-moseq
+pip install -e ./
+```
+
+Now, the keypoint-moseq package will behave as usual, but will be using a recurrent SLDS model in place of the standard SLDS.
+
 ## Overview
 
 In a standard SLDS, the discrete states ($z_t$) follow open-loop Markovian dynamics, meaning the transition to the next state $z_{t+1}$ depends entirely on $z_t$. 

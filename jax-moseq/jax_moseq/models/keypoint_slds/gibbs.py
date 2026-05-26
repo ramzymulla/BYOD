@@ -357,133 +357,6 @@ def resample_location(
     )
     return v
 
-
-def resample_model(
-    data,
-    seed,
-    states,
-    params,
-    hypparams,
-    noise_prior,
-    ar_only=False,
-    states_only=False,
-    resample_global_noise_scale=False,
-    resample_local_noise_scale=True,
-    fix_heading=False,
-    verbose=False,
-    jitter=1e-3,
-    parallel_message_passing=False,
-    **kwargs
-):
-    """
-    Resamples the Keypoint SLDS model given the hyperparameters,
-    data, noise prior, current states, and current parameters.
-
-    Parameters
-    ----------
-    data : dict
-        Data dictionary containing the observations and mask.
-    seed : jr.PRNGKey
-        JAX random seed.
-    states : dict
-        State values for each latent variable.
-    params : dict
-        Values for each model parameter.
-    hypparams : dict
-        Values for each group of hyperparameters.
-    noise_prior : scalar or jax array broadcastable to ``s``
-        Prior on noise scale.
-    ar_only : bool, default=False
-        Whether to restrict sampling to ARHMM components.
-    states_only : bool, default=False
-        Whether to restrict sampling to states.
-    resample_global_noise_scale : bool, default=False
-        Whether to resample the global noise scales (``sigmasq``)
-    resample_local_noise_scale : bool, default=True
-        Whether to resample the local noise scales (``s``)
-    fix_heading : bool, default=False
-        Whether to exclude ``h`` from resampling.
-    jitter : float, default=1e-3
-        Amount to boost the diagonal of the covariance matrix
-        during backward-sampling of the continuous states.
-    verbose : bool, default=False
-        Whether to print progress info during resampling.
-    parallel_message_passing : bool, default=False,
-        Use associative scan for Kalman sampling, which is faster on
-        a GPU but has a significantly longer jit time.
-
-    Returns
-    ------
-    model : dict
-        Dictionary containing the hyperparameters and
-        updated seed, states, and parameters of the model.
-    """
-    model = arhmm.resample_model(
-        data, seed, states, params, hypparams, states_only, verbose=verbose
-    )
-    if ar_only:
-        model["noise_prior"] = noise_prior
-        return model
-
-    seed = model["seed"]
-    params = model["params"].copy()
-    states = model["states"].copy()
-
-    if (not states_only) and resample_global_noise_scale:
-        if verbose:
-            print("Resampling sigmasq (global noise scales)")
-        params["sigmasq"] = resample_obs_variance(
-            seed,
-            **data,
-            **states,
-            **params,
-            s_0=noise_prior,
-            **hypparams["obs_hypparams"]
-        )
-
-    if verbose:
-        print("Resampling x (continuous latent states)")
-    states["x"] = resample_continuous_stateseqs(
-        seed,
-        **data,
-        **states,
-        **params,
-        jitter=jitter,
-        parallel_message_passing=parallel_message_passing
-    )
-
-    if not fix_heading:
-        if verbose:
-            print("Resampling h (heading)")
-        states["h"] = resample_heading(seed, **data, **states, **params)
-
-    if verbose:
-        print("Resampling v (location)")
-    states["v"] = resample_location(
-        seed, **data, **states, **params, **hypparams["cen_hypparams"]
-    )
-
-    if resample_local_noise_scale:
-        if verbose:
-            print("Resampling s (local noise scales)")
-        states["s"] = resample_scales(
-            seed,
-            **data,
-            **states,
-            **params,
-            s_0=noise_prior,
-            **hypparams["obs_hypparams"]
-        )
-
-    return {
-        "seed": seed,
-        "states": states,
-        "params": params,
-        "hypparams": hypparams,
-        "noise_prior": noise_prior,
-    }
-
-
 # ============================================================
 # rSLDS-specific Gibbs steps
 # ============================================================
@@ -606,7 +479,7 @@ def resample_time_varying_discrete_stateseqs(
     z = jnp.concatenate([z_fwd, z_T[..., None]], axis=-1)
     return z
 
-def resample_rslds_model(
+def resample_model(
     data,
     seed,
     states,
