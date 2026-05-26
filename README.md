@@ -1,4 +1,4 @@
-# Recurrent Keypoint SLDS (rSLDS) for `jax_moseq`
+# Recurrent Keypoint SLDS (rSLDS) for `keypoint-moseq`
 
 This repository contains a modified version of the Keypoint SLDS model from the `jax_moseq` package. The standard Switching Linear Dynamical System (SLDS) has been extended into a **Recurrent Switching Linear Dynamical System (rSLDS)**, based on the framework introduced by [Linderman et al., 2016](https://arxiv.org/abs/1610.08466).
 
