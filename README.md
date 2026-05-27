@@ -11,6 +11,7 @@ conda create --name kpms python=3.10
 conda activate kpms
 pip install keypoint-moseq
 ```
+**NOTE:** replace ```keypoint-moseq``` with ```keypoint-moseq[cuda]``` to take advantage of GPU acceleration
 
 Next, uninstall the jax-moseq package from the environment, then install the local version from this repository (the following lines should be run from the top of the BYOD repository)
 
