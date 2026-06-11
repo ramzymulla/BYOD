@@ -360,7 +360,7 @@ def resample_location(
 # ============================================================
 # rSLDS-specific Gibbs steps
 # ============================================================
-def sticky_rslds_loss(params, x_prev, z_prev, z_curr, kappa):
+def sticky_rslds_loss(params, x_prev, z_prev, z_curr, kappa, lambda_W, lambda_b):
     W_stay, b_stay = params["W_stay"], params["b_stay"]
     
     W_active = W_stay[z_prev]
@@ -370,24 +370,30 @@ def sticky_rslds_loss(params, x_prev, z_prev, z_curr, kappa):
     stay_mask = (z_prev == z_curr).astype(jnp.float32)
     
     # Binary Cross Entropy for stay vs. leave
-    nll = -jnp.sum(stay_mask * jax.nn.log_sigmoid(logits) + 
+    nll = -jnp.mean(stay_mask * jax.nn.log_sigmoid(logits) + 
                    (1.0 - stay_mask) * jax.nn.log_sigmoid(-logits))
     
-    # Do NOT penalize b_stay. It must be free to absorb the mean of x_prev.
-    # Reduce L2 on W_stay to allow sharp linear decision boundaries.
-    l2_W = 0.5 * 1.0 * jnp.sum(W_stay ** 2)
+    l2_W = 0.5 * lambda_W * jnp.sum(W_stay ** 2)
     
-    return nll + l2_W
+    # Translate kappa (expected duration) into target log-odds for staying
+    # p_stay = (kappa - 1) / kappa -> logit(p_stay) = log(kappa - 1)
+    safe_kappa = jnp.maximum(kappa, 2.0)
+    target_bias = jnp.log(safe_kappa - 1.0)
+    
+    # Apply kappa as an L2 prior pulling the bias toward the target duration
+    l2_b = 0.5 * lambda_b * jnp.sum((b_stay - target_bias) ** 2)
+    
+    return nll + l2_W + l2_b
 
 @partial(jax.jit, static_argnames=("num_iters",))
-def update_sticky_weights_map(x_prev, z_prev, z_curr, W_init, b_init, kappa, num_iters=50):
+def update_sticky_weights_map(x_prev, z_prev, z_curr, W_init, b_init, kappa, lambda_W, lambda_b, num_iters=50):
     optimizer = optax.adam(learning_rate=1e-2)
     params = {"W_stay": W_init, "b_stay": b_init}
     opt_state = optimizer.init(params)
     
     def step(carry, _):
         p, state = carry
-        loss, grads = jax.value_and_grad(sticky_rslds_loss)(p, x_prev, z_prev, z_curr, kappa)
+        loss, grads = jax.value_and_grad(sticky_rslds_loss)(p, x_prev, z_prev, z_curr, kappa, lambda_W, lambda_b)
         updates, state = optimizer.update(grads, state)
         p = optax.apply_updates(p, updates)
         return (p, state), loss
@@ -540,13 +546,15 @@ def resample_model(
             
         kappa = hypparams["trans_hypparams"].get("kappa", 1e4)
         alpha = hypparams["trans_hypparams"].get("alpha", 10.0)
+        lambda_W = hypparams["trans_hypparams"].get("lambda_W", 0.1)
+        lambda_b = hypparams["trans_hypparams"].get("lambda_b", 0.05)
         
         x_prev = x_aligned[..., :-1, :].reshape(-1, params["W_stay"].shape[-1])
         z_prev = states["z"][..., :-1].reshape(-1)
         z_curr = states["z"][..., 1:].reshape(-1)
 
         params["W_stay"], params["b_stay"] = update_sticky_weights_map(
-            x_prev, z_prev, z_curr, params["W_stay"], params["b_stay"], kappa
+            x_prev, z_prev, z_curr, params["W_stay"], params["b_stay"], kappa, lambda_W, lambda_b
         )
         
         params["pi_other"] = resample_pi_other(seed_w, states["z"], num_states, alpha)
